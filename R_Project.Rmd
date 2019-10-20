@@ -1,0 +1,241 @@
+---
+title: "R_Project"
+author: "Amy Pollpeter"
+date: "10/9/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### Install the needed packages for the project.
+```{r}
+library(tidyverse)
+library(reshape2)
+```
+
+#import the original data files.
+
+```{r}
+fang_data <- read_tsv("https://github.com/EEOB-BioData/BCB546X-Fall2019/blob/master/assignments/UNIX_Assignment/fang_et_al_genotypes.txt")
+snp_data <- read_tsv("https://github.com/EEOB-BioData/BCB546X-Fall2019/blob/master/assignments/UNIX_Assignment/snp_position.txt")
+```
+
+## Separating Maize and Teosinte Data
+I used the filter command to separate the teosinte and maize data into separate data frames.
+I then used the write commmand to save these new data frames as new text files.
+```{r}
+teosinte_data <- filter(fang_data, `Group` %in% c("ZMPBA", "ZMPIL", "ZMPJA"))
+maize_data <- filter(fang_data, `Group` %in% c("ZMMIL", "ZMMLR", "ZMMMR"))
+write_tsv(maize_data, "maize_data.txt")
+write_tsv(teosinte_data, "teosinte_data.txt")
+```
+
+## Transposing Maize and Teosinte Data
+I used the transpose (t) function to transform both the maize and teosinte data to switch the row and column information.
+```{r}
+transposed_maize <- t(maize_data)
+transposed_teosinte <- t(teosinte_data)
+transposed_maize_df <- as.data.frame(transposed_maize)
+transposed_teosinte_df <- as.data.frame(transposed_teosinte)
+write_tsv(transposed_maize_df, "transposed_maize_data.txt", na = "NA", append = FALSE, col_names = FALSE)
+write_tsv(transposed_teosinte_df, "transposed_teosinte_data.txt", na = "NA", append = FALSE, col_names = FALSE)
+```
+
+## Preparing SNP file to be joined with maize and teosinte files
+First I read the snp_position file into R.
+Then I selected the 3 columns I wanted to use when joining the files.
+Finally I removed the header.
+```{r}
+snp_position <- read_tsv("D:/Documents/BCB546/Cloned_Repository/BCB546X-Fall2019/assignments/UNIX_Assignment/snp_position.txt")
+snp_position_edit <- select(snp_position, SNP_ID, Chromosome, Position)
+snp_position_noheader <- unname(snp_position_edit)
+snp_position_sorted <- arrange(snp_position_edit, SNP_ID)
+```
+## Preparing Maize and Teosinte Files to be joined to SNP data
+Ran the first command -c(1) three times to remove the first three lines of each file.
+While the resulting files are technically intermediate files, I still used the write command to save them.
+```{r}
+transposed_maize_edit <- transposed_maize_df[-c(1),]
+transposed_maize_edit <- transposed_maize_edit[-c(1),]
+transposed_maize_edit <- transposed_maize_edit[-c(1),]
+transposed_teosinte_edit <- transposed_teosinte_df[-c(1),]
+transposed_teosinte_edit <- transposed_teosinte_edit[-c(1),]
+transposed_teosinte_edit <- transposed_teosinte_edit[-c(1),]
+write_tsv(transposed_teosinte_edit, "transposed_teosinte_data_edit.txt", na = "NA", append = FALSE, col_names = FALSE)
+write_tsv(transposed_maize_df, "transposed_maize_data.txt", na = "NA", append = FALSE, col_names = FALSE)
+```
+
+## Joining the files
+After joining the files using cbind, the row name was redundant with the first column so I used the NULL command to remove the rownames from the files before writing them.
+```{r}
+maize_joined <- cbind(snp_position_sorted, transposed_maize_edit)
+teosinte_joined <- cbind(snp_position_sorted, transposed_teosinte_edit)
+rownames(maize_joined) <- NULL
+rownames(teosinte_joined) <- NULL
+write_tsv(maize_joined, "maize_joined.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_joined, "teosinte_joined.txt", na = "NA", append = FALSE, col_names = TRUE)
+rownames(maize_joined) <- NULL
+rownames(teosinte_joined) <- NULL
+```
+## Replacing missing data
+Since we want one copy of the files to have missing data indicated by ? (as it currently is) and a second copy of the files indicating missing data with "-", I replaced the ? and made a new file before separating by chromosome number.
+Using the lapply function also reassigns the new file as a list so I then switched it back to a data frame using the as.data.frame command.
+```{r}
+maize_joined_alt <- lapply(maize_joined, gsub, pattern = "?", replacement = "-", fixed = TRUE)
+maize_joined_alt <- as.data.frame(maize_joined_alt)
+teosinte_joined_alt <- lapply(teosinte_joined, gsub, pattern = "?", replacement = "-", fixed = TRUE)
+teosinte_joined_alt <- as.data.frame(teosinte_joined_alt)
+write_tsv(maize_joined_alt, "maize_joined_alt.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_joined_alt, "teosinte_joined_alt.txt", na = "NA", append = FALSE, col_names = TRUE)
+```
+## Sorting files by chromosome #.
+Instead of sorting the files after I have separated them, I am creating to sets of files, one with the rows sorted by Chromosome and Position (ascending) using the file with the missing data encoded with '?', and a second with the rows sorted by chromosome (descending) using the file with the missing data encoded with '-'.
+However, before I can sort by Chromosome, I need to reclassify the Chromosome value as a numeric value instead of a character value.  If I do this while the "multiple" and "unknown" are still in the dataset (in the Chromosome column) they will be replaced by NAs.  So I will pull those data out first.
+```{r}
+maize_unknownChr <- filter(maize_joined, Chromosome == "unknown")
+maize_multipleChr <- filter(maize_joined, Chromosome == "multiple")
+maize_joined <- transform(maize_joined, Chromosome = as.numeric(Chromosome), Position = as.numeric(Position))
+maize_joined_alt <- transform(maize_joined_alt, Chromosome = as.numeric(Chromosome), Position = as.numeric (Position))
+maize_joined_sorted <- arrange(maize_joined, Chromosome, Position)
+maize_joined_alt_sorted <- arrange(maize_joined_alt, Chromosome, desc(Position))
+maize_Chr1 <- filter(maize_joined_sorted, Chromosome == 1)
+maize_Chr2 <- filter(maize_joined_sorted, Chromosome == 2)
+maize_Chr3 <- filter(maize_joined_sorted, Chromosome == 3)
+maize_Chr4 <- filter(maize_joined_sorted, Chromosome == 4)
+maize_Chr5 <- filter(maize_joined_sorted, Chromosome == 5)
+maize_Chr6 <- filter(maize_joined_sorted, Chromosome == 6)
+maize_Chr7 <- filter(maize_joined_sorted, Chromosome == 7)
+maize_Chr8 <- filter(maize_joined_sorted, Chromosome == 8)
+maize_Chr9 <- filter(maize_joined_sorted, Chromosome == 9)
+maize_Chr10 <- filter(maize_joined_sorted, Chromosome == 10)
+maize_Chr1_desc <- filter(maize_joined_alt_sorted, Chromosome == 1)
+maize_Chr2_desc <- filter(maize_joined_alt_sorted, Chromosome == 2)
+maize_Chr3_desc <- filter(maize_joined_alt_sorted, Chromosome == 3)
+maize_Chr4_desc <- filter(maize_joined_alt_sorted, Chromosome == 4)
+maize_Chr5_desc <- filter(maize_joined_alt_sorted, Chromosome == 5)
+maize_Chr6_desc <- filter(maize_joined_alt_sorted, Chromosome == 6)
+maize_Chr7_desc <- filter(maize_joined_alt_sorted, Chromosome == 7)
+maize_Chr8_desc <- filter(maize_joined_alt_sorted, Chromosome == 8)
+maize_Chr9_desc <- filter(maize_joined_alt_sorted, Chromosome == 9)
+maize_Chr10_desc <- filter(maize_joined_alt_sorted, Chromosome == 10)
+teosinte_unknownChr <- filter(teosinte_joined, Chromosome == "unknown")
+teosinte_multipleChr <- filter(teosinte_joined, Chromosome == "multiple")
+teosinte_joined <- transform(teosinte_joined, Chromosome = as.numeric(Chromosome), Position = as.numeric (Position))
+teosinte_joined_alt <- transform(teosinte_joined_alt, Chromosome = as.numeric(Chromosome), Position = as.numeric (Position))
+teosinte_joined_sorted <- arrange(teosinte_joined, Chromosome, Position)
+teosinte_joined_alt_sorted <- arrange(teosinte_joined_alt, Chromosome, desc(Position))
+teosinte_Chr1 <- filter(teosinte_joined_sorted, Chromosome == 1)
+teosinte_Chr2 <- filter(teosinte_joined_sorted, Chromosome == 2)
+teosinte_Chr3 <- filter(teosinte_joined_sorted, Chromosome == 3)
+teosinte_Chr4 <- filter(teosinte_joined_sorted, Chromosome == 4)
+teosinte_Chr5 <- filter(teosinte_joined_sorted, Chromosome == 5)
+teosinte_Chr6 <- filter(teosinte_joined_sorted, Chromosome == 6)
+teosinte_Chr7 <- filter(teosinte_joined_sorted, Chromosome == 7)
+teosinte_Chr8 <- filter(teosinte_joined_sorted, Chromosome == 8)
+teosinte_Chr9 <- filter(teosinte_joined_sorted, Chromosome == 9)
+teosinte_Chr10 <- filter(teosinte_joined_sorted, Chromosome == 10)
+teosinte_Chr1_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 1)
+teosinte_Chr2_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 2)
+teosinte_Chr3_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 3)
+teosinte_Chr4_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 4)
+teosinte_Chr5_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 5)
+teosinte_Chr6_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 6)
+teosinte_Chr7_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 7)
+teosinte_Chr8_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 8)
+teosinte_Chr9_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 9)
+teosinte_Chr10_desc <- filter(teosinte_joined_alt_sorted, Chromosome == 10)
+```
+
+Next, I will need to write these output data frames to actual files to be added to the git repository.
+```{r}
+write_tsv(maize_unknownChr, "maize_unknownChr.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_multipleChr, "maize_multipleChr.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr1, "maize_Chr1.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr2, "maize_Chr2.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr3, "maize_Chr3.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr4, "maize_Chr4.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr5, "maize_Chr5.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr6, "maize_Chr6.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr7, "maize_Chr7.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr8, "maize_Chr8.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr9, "maize_Chr9.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr10, "maize_Ch10.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr1_desc, "maize_Chr1_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr2_desc, "maize_Chr2_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr3_desc, "maize_Chr3_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr4_desc, "maize_Chr4_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr5_desc, "maize_Chr5_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr6_desc, "maize_Chr6_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr7_desc, "maize_Chr7_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr8_desc, "maize_Chr8_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr9_desc, "maize_Chr9_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(maize_Chr10_desc, "maize_Chr10_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr1, "teosinte_Chr1.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr2, "teosinte_Chr2.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr3, "teosinte_Chr3.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr4, "teosinte_Chr4.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr5, "teosinte_Chr5.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr6, "teosinte_Chr6.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr7, "teosinte_Chr7.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr8, "teosinte_Chr8.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr9, "teosinte_Chr9.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr10, "teosinte_Ch10.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr1_desc, "teosinte_Chr1_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr2_desc, "teosinte_Chr2_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr3_desc, "teosinte_Chr3_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr4_desc, "teosinte_Chr4_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr5_desc, "teosinte_Chr5_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr6_desc, "teosinte_Chr6_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr7_desc, "teosinte_Chr7_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr8_desc, "teosinte_Chr8_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr9_desc, "teosinte_Chr9_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_Chr10_desc, "teosinte_Chr10_desc.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_unknownChr, "teosinte_unknownChr.txt", na = "NA", append = FALSE, col_names = TRUE)
+write_tsv(teosinte_multipleChr, "teosinte_multipleChr.txt", na = "NA", append = FALSE, col_names = TRUE)
+```
+
+##Plotting Data.
+
+```{r}
+
+SNP_graph <- ggplot(data = snp_position_edit) + geom_bar(mapping = aes(x=Chromosome))
+SNP_graph + ggtitle("# of SNPs per Chromosome")
+```
+```{r}
+snp_position_edit1 <- transform(snp_position_edit, Chromosome = as.integer(Chromosome), Position = as.numeric(Position))
+SNP_graph2 <- ggplot(data = snp_position_edit1) + geom_bar(mapping = aes(x=Chromosome))
+SNP_graph2 + ggtitle("# of SNPs per Chromosome") 
+```
+
+## Density Plot
+```{r}
+density <- ggplot(snp_position_edit1, aes(x=Position, na.rm =TRUE)) + geom_density(aes(fill = as.character(Chromosome))) + facet_wrap(~as.character(Chromosome))
+density + ggtitle("Density of SNPs per Position on Chromosome")
+```
+
+```{r}
+Maize_melt <- melt(data = fang_data, id.var = "Sample_ID", measure.var = names(fang_data[4:986]))
+Maize_melt_pheno <- mutate(Maize_melt, hom = value %in% c("A/A", "C/C", "T/T", "G/G"))
+Maize_melt_pheno <- mutate(Maize_melt_pheno, het = value %in% c("A/T", "A/C", "A/G", "C/A", "C/G", "C/T", "G/A", "G/C", "G/T", "T/A", "T/C", "T/G"))
+Maize_melt_pheno <- mutate(Maize_melt_pheno, unk = value %in% c("A/?", "?/A", "C/?", "?/C", "G/?", "?/G", "T/?", "?/T", "?/?"))
+```
+```{r}
+pheno_hom <- ggplot(data = Maize_melt_pheno) + geom_bar(mapping = aes(x=hom))
+pheno_hom + ggtitle("Amount of Homozygosity")
+pheno_het <- ggplot(data = Maize_melt_pheno) + geom_bar(mapping = aes(x=het))
+pheno_het + ggtitle("Amount of Heterozygosity")
+pheno_unk <- ggplot(data = Maize_melt_pheno) + geom_bar(mapping = aes(x=unk))
+pheno_unk + ggtitle("Amount of Unknown Phenotypes")
+```
+
+
+```{r}
+Maize_melt2 <- melt(data = fang_data, id.var = "Group", measure.var = names(fang_data[4:986]))
+Maize_melt_pheno <- mutate(Maize_melt, hom = value %in% c("A/A", "C/C", "T/T", "G/G"))
+Maize_melt_pheno <- mutate(Maize_melt_pheno, het = value %in% c("A/T", "A/C", "A/G", "C/A", "C/G", "C/T", "G/A", "G/C", "G/T", "T/A", "T/C", "T/G"))
+Maize_melt_pheno <- mutate(Maize_melt_pheno, unk = value %in% c("A/?", "?/A", "C/?", "?/C", "G/?", "?/G", "T/?", "?/T", "?/?"))
+```
+```
+
