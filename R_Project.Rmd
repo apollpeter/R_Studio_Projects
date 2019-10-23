@@ -8,21 +8,40 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-
-#### Install the needed packages for the project.
+# R Project for BCB 546 - Amy Pollpeter
+## Prepare the Envionment
+### Install the needed packages for the project.
 ```{r}
 library(tidyverse)
 library(reshape2)
 ```
 
-#import the original data files.
+### Download and import the original data files.
 
 ```{r}
-fang_data <- read_tsv("https://github.com/EEOB-BioData/BCB546X-Fall2019/blob/master/assignments/UNIX_Assignment/fang_et_al_genotypes.txt")
-snp_data <- read_tsv("https://github.com/EEOB-BioData/BCB546X-Fall2019/blob/master/assignments/UNIX_Assignment/snp_position.txt")
+download.file("https://raw.githubusercontent.com/EEOB-BioData/BCB546X-Fall2019/master/assignments/UNIX_Assignment/snp_position.txt", destfile = "./snp_position.txt")
+
+download.file("https://raw.githubusercontent.com/EEOB-BioData/BCB546X-Fall2019/master/assignments/UNIX_Assignment/fang_et_al_genotypes.txt", destfile = "./fang_et_al_genotypes.txt")
+
+fang_data <- read_tsv("./fang_et_al_genotypes.txt")
+
+snp_data <- read_tsv("./snp_position.txt")
+```
+
+## Inspect the data files
+fang data has 986 columns and 2782 rows.
+snp_data has 15 columns and 983 rows.
+```{r}
+ncol(fang_data)
+nrow(fang_data)
+ncol(snp_data)
+nrow(snp_data)
+file.info("fang_et_al_genotypes.txt")
+file.info("snp_data.txt")
 ```
 
 ## Separating Maize and Teosinte Data
+
 I used the filter command to separate the teosinte and maize data into separate data frames.
 I then used the write commmand to save these new data frames as new text files.
 ```{r}
@@ -196,46 +215,43 @@ write_tsv(teosinte_unknownChr, "teosinte_unknownChr.txt", na = "NA", append = FA
 write_tsv(teosinte_multipleChr, "teosinte_multipleChr.txt", na = "NA", append = FALSE, col_names = TRUE)
 ```
 
-##Plotting Data.
+## Plotting Data.
 
 ```{r}
 
 SNP_graph <- ggplot(data = snp_position_edit) + geom_bar(mapping = aes(x=Chromosome))
 SNP_graph + ggtitle("# of SNPs per Chromosome")
 ```
-```{r}
-snp_position_edit1 <- transform(snp_position_edit, Chromosome = as.integer(Chromosome), Position = as.numeric(Position))
-SNP_graph2 <- ggplot(data = snp_position_edit1) + geom_bar(mapping = aes(x=Chromosome))
-SNP_graph2 + ggtitle("# of SNPs per Chromosome") 
-```
 
 ## Density Plot
 ```{r}
+snp_position_edit1 <- transform(snp_position_edit, Chromosome = as.integer(Chromosome), Position = as.numeric(Position))
 density <- ggplot(snp_position_edit1, aes(x=Position, na.rm =TRUE)) + geom_density(aes(fill = as.character(Chromosome))) + facet_wrap(~as.character(Chromosome))
 density + ggtitle("Density of SNPs per Position on Chromosome")
 ```
 
+## Amount of Heterozygosity
+I plotted in this in two different ways, the first is over the entire fang dataset.  The second splits it up by species as either Maize, Teosinte, or Other.
 ```{r}
-Maize_melt <- melt(data = fang_data, id.var = "Sample_ID", measure.var = names(fang_data[4:986]))
-Maize_melt_pheno <- mutate(Maize_melt, hom = value %in% c("A/A", "C/C", "T/T", "G/G"))
-Maize_melt_pheno <- mutate(Maize_melt_pheno, het = value %in% c("A/T", "A/C", "A/G", "C/A", "C/G", "C/T", "G/A", "G/C", "G/T", "T/A", "T/C", "T/G"))
-Maize_melt_pheno <- mutate(Maize_melt_pheno, unk = value %in% c("A/?", "?/A", "C/?", "?/C", "G/?", "?/G", "T/?", "?/T", "?/?"))
-```
-```{r}
-pheno_hom <- ggplot(data = Maize_melt_pheno) + geom_bar(mapping = aes(x=hom))
-pheno_hom + ggtitle("Amount of Homozygosity")
-pheno_het <- ggplot(data = Maize_melt_pheno) + geom_bar(mapping = aes(x=het))
-pheno_het + ggtitle("Amount of Heterozygosity")
-pheno_unk <- ggplot(data = Maize_melt_pheno) + geom_bar(mapping = aes(x=unk))
-pheno_unk + ggtitle("Amount of Unknown Phenotypes")
+fang_melt <- melt(data = fang_data, id.var = "Group", measure.var = names(fang_data[4:986]))
+
+fang_melt_pheno <- mutate(fang_melt, pheno = ifelse(value %in% c("A/A", "C/C", "T/T", "G/G"), "Hom", ifelse(value %in% c("A/?", "?/A", "C/?", "?/C", "G/?", "?/G", "T/?", "?/T", "?/?"), "Unk", "Het")))
+
+
+pheno <- ggplot(data = fang_melt_pheno) + geom_bar(mapping = aes(x=pheno, fill=pheno))
+pheno + labs(title = "Amount of Heterozygosity, Homozygosity, and Unknown Phenotype", x = "Phenotype", y= "Count") + theme_bw()
 ```
 
 
 ```{r}
-Maize_melt2 <- melt(data = fang_data, id.var = "Group", measure.var = names(fang_data[4:986]))
-Maize_melt_pheno <- mutate(Maize_melt, hom = value %in% c("A/A", "C/C", "T/T", "G/G"))
-Maize_melt_pheno <- mutate(Maize_melt_pheno, het = value %in% c("A/T", "A/C", "A/G", "C/A", "C/G", "C/T", "G/A", "G/C", "G/T", "T/A", "T/C", "T/G"))
-Maize_melt_pheno <- mutate(Maize_melt_pheno, unk = value %in% c("A/?", "?/A", "C/?", "?/C", "G/?", "?/G", "T/?", "?/T", "?/?"))
-```
+fang_melt_pheno <- mutate(fang_melt_pheno, species = ifelse(Group %in% c("ZMMIL", "ZMMLR", "ZMMMR"), "Maize", ifelse(Group %in% c("ZMPBA", "ZMPIL", "ZMPJA"), "Teosinte", "Other")))
+
+pheno2 <- ggplot(data = fang_melt_pheno) + geom_bar(mapping = aes(x=pheno, fill=species))
+pheno2 + labs(title = "Amount of Heterozygosity, Homozygosity, and Unknown Phenotype", x = "Phenotype", y= "Count") + theme_bw()
 ```
 
+## Other Visualization
+```{r}
+genotype <- ggplot(data = fang_melt_pheno) + geom_bar(mapping = aes(x=value, fill=species))
+genotype + labs(title = "Amount of Heterozygosity, Homozygosity, and Unknown Phenotype", x = "Genotype", y= "Count") + theme_bw()
+```
